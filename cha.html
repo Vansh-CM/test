@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LLM Prompt Stream</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    textarea { width: 100%; height: 100px; }
+    #response, #thinking {
+      white-space: pre-wrap;
+      border: 1px solid #ccc;
+      padding: 1em;
+      margin-top: 1em;
+    }
+    #thinking { background: #f9f9f9; color: gray; }
+    #response { background: #e6ffe6; }
+  </style>
+</head>
+<body>
+  <h2>Ask LLM</h2>
+  <textarea id="prompt">10 names for pet dogs in India, based on the husky breed</textarea><br>
+  <button onclick="sendPrompt()">Send</button>
+
+  <h3>Thinking:</h3>
+  <div id="thinking"></div>
+
+  <h3>Response:</h3>
+  <div id="response"></div>
+
+  <script>
+    async function sendPrompt() {
+      document.getElementById('response').textContent = '';
+      document.getElementById('thinking').textContent = '';
+
+      const controller = new AbortController();
+      const signal = controller.signal;
+
+      const response = await fetch('http://localhost:5007/v1/open-api/10229/tiptap.content', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: document.getElementById('prompt').value,
+          base_id: 23423
+        }),
+        signal
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      let buffer = '';
+      let isThinking = false;
+      let thinkingBuffer = '';
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            try {
+              const dataStr = trimmed.replace('data:', '').trim();
+              if (!dataStr) continue;
+
+              const json = JSON.parse(dataStr);
+              const content = json.content;
+
+              if (!content) continue;
+
+              if (!isThinking && content.includes('<think>')) {
+                isThinking = true;
+                const parts = content.split('<think>');
+                const afterThink = parts[1] || '';
+
+                if (afterThink.includes('</think>')) {
+                  const [thinkText, rest] = afterThink.split('</think>');
+                  document.getElementById('thinking').textContent += thinkText;
+                  isThinking = false;
+
+                  if (rest.trim()) {
+                    document.getElementById('response').textContent += rest;
+                  }
+                } else {
+                  thinkingBuffer = afterThink;
+                  document.getElementById('thinking').textContent += thinkingBuffer;
+                }
+
+              } else if (isThinking) {
+                if (content.includes('</think>')) {
+                  const [thinkText, rest] = content.split('</think>');
+                  thinkingBuffer += thinkText;
+                  document.getElementById('thinking').textContent += thinkText;
+                  isThinking = false;
+
+                  if (rest.trim()) {
+                    document.getElementById('response').textContent += rest;
+                  }
+                } else {
+                  thinkingBuffer += content;
+                  document.getElementById('thinking').textContent += content;
+                }
+              } else {
+                document.getElementById('response').textContent += content;
+              }
+
+            } catch (e) {
+              console.error('JSON parse error:', e);
+            }
+          }
+        }
+       
+        
+
+        if (!buffer.endsWith('\n')) {
+          buffer = lines.pop(); // preserve unfinished line
+        } else {
+          buffer = '';
+        }
+      }
+    }
+  </script>
+</body>
+</html>
+
+
+
+search
+stage_id
+department_id
+tag_id 
+assign_to
+
+
